@@ -29,7 +29,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── SDL3 dependency ──────────────────────────────────────────────────────
+      # ── SDL3 ─────────────────────────────────────────────────────────────────
       - name: Install SDL3 (macOS)
         if: runner.os == 'macOS'
         run: brew install sdl3
@@ -47,19 +47,26 @@ jobs:
       - name: Expose SDL3 to pkg-config (Linux)
         if: runner.os == 'Linux'
         run: |
-          echo "PKG_CONFIG_PATH=${{ steps.sdl.outputs.prefix }}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${{ steps.sdl.outputs.prefix }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
-      # ── SDL3_ttf dependency ──────────────────────────────────────────────────
+      # ── SDL3_ttf ──────────────────────────────────────────────────────────────
       - name: Install SDL3_ttf (macOS)
         if: runner.os == 'macOS'
         run: brew install sdl3_ttf
+
+      # Expose Homebrew's pkgconfig to the build — shivammathur/setup-php can
+      # shadow Homebrew's environment, so we set this explicitly.
+      - name: Expose Homebrew pkgconfig to PATH (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BREW_PREFIX="$(brew --prefix)"
+          echo "PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/share/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Install SDL3_ttf (Linux)
         if: runner.os == 'Linux'
         run: |
           SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake git
+          sudo apt-get install -y --no-install-recommends build-essential cmake git
 
           git clone --depth 1 --branch main \
             https://github.com/libsdl-org/SDL_ttf.git /tmp/SDL_ttf
@@ -74,22 +81,26 @@ jobs:
           cmake --build /tmp/SDL_ttf/build -j$(nproc)
           sudo cmake --install /tmp/SDL_ttf/build
 
-      # ── GCC 14 compatibility ─────────────────────────────────────────────────
-      # Zephir-generated C code has benign -Wincompatible-pointer-types patterns
-      # that gcc 14+ (Ubuntu 24.10+) promotes to hard errors. Demote them.
-      - name: Set permissive CFLAGS for Zephir-generated code
-        run: |
-          echo "CFLAGS=-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration -Wno-error=implicit-int" >> "$GITHUB_ENV"
-
-      # ── Build ────────────────────────────────────────────────────────────────
+      # ── Build ─────────────────────────────────────────────────────────────────
+      # GCC 14+ (Ubuntu 24.10+) promotes -Wincompatible-pointer-types to a hard
+      # error. Zephir-generated code has benign mismatches — demote to warnings.
+      # config.m4 also applies these flags, but setting them here ensures they
+      # are appended to (not replace) any flags already set by the PHP build system.
       - name: Build extension
         working-directory: ext
+        env:
+          CFLAGS: >-
+            ${{ env.CFLAGS }}
+            -Wno-error=incompatible-pointer-types
+            -Wno-error=int-conversion
+            -Wno-error=implicit-function-declaration
+            -Wno-error=implicit-int
         run: |
           phpize
           ./configure --enable-sdl3ttf
           make -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
 
-      # ── Smoke test ───────────────────────────────────────────────────────────
+      # ── Smoke test ────────────────────────────────────────────────────────────
       - name: Smoke-test
         run: |
           php \

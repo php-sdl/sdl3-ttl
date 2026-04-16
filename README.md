@@ -1,5 +1,6 @@
 # php-sdl3-ttf
 
+[![CI](https://github.com/php-sdl/sdl3-ttl/actions/workflows/ci.yml/badge.svg)](https://github.com/php-sdl/sdl3-ttl/actions/workflows/ci.yml)
 [![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.2-777bb4?logo=php&logoColor=white)](https://www.php.net)
 [![SDL3](https://img.shields.io/badge/SDL3-%E2%89%A5%203.4.0-1d4ed8)](https://www.libsdl.org/)
 [![SDL3_ttf](https://img.shields.io/badge/SDL3__ttf-%E2%89%A5%203.2-1d4ed8)](https://github.com/libsdl-org/SDL_ttf)
@@ -24,6 +25,7 @@ namespace and can be loaded side-by-side.
 
 - [Requirements](#requirements)
 - [Installation](#installation)
+  - [Via PHP PIE (recommended)](#via-php-pie-recommended)
   - [Platform installers](#platform-installers)
   - [Manual build with `phpize`](#manual-build-with-phpize)
 - [Verifying the install](#verifying-the-install)
@@ -35,14 +37,17 @@ namespace and can be loaded side-by-side.
 
 ## Requirements
 
-| Component            | Minimum version | Notes                                                                        |
-| -------------------- | --------------- | ---------------------------------------------------------------------------- |
-| PHP                  | 8.2             | ZTS and NTS builds both supported.                                           |
-| SDL3                 | 3.4.0           | Must be discoverable via `pkg-config sdl3` or the usual search paths.        |
-| SDL3_ttf             | 3.2             | Must be discoverable via `pkg-config SDL3_ttf` (or `sdl3-ttf` / `sdl3_ttf`).|
-| OS                   | Linux / macOS   | Windows is not currently supported.                                          |
-| Compiler             | C11 toolchain   | `gcc`, `clang`, or Apple Clang.                                              |
-| `php-dev` / `phpize` | matches PHP     | Required for any build path.                                                 |
+| Component            | Minimum version | Notes                                                                                            |
+| -------------------- | --------------- | ------------------------------------------------------------------------------------------------ |
+| PHP                  | 8.2             | ZTS and NTS builds both supported.                                                               |
+| [php-sdl/sdl3]       | any             | **Required.** Provides the SDL3 window, renderer, and surface types this extension works with.   |
+| SDL3                 | 3.4.0           | C library — must be discoverable via `pkg-config sdl3`.                                          |
+| SDL3_ttf             | 3.2             | C library — must be discoverable via `pkg-config SDL3_ttf` (or `sdl3-ttf` / `sdl3_ttf`).        |
+| OS                   | Linux / macOS   | Windows is not currently supported.                                                              |
+| Compiler             | C11 toolchain   | `gcc`, `clang`, or Apple Clang.                                                                  |
+| `php-dev` / `phpize` | matches PHP     | Required for any build path.                                                                     |
+
+[php-sdl/sdl3]: https://github.com/php-sdl/sdl3
 
 Tested on macOS (Apple Silicon + Intel), Debian Trixie, Raspberry Pi OS
 (arm64 / armhf), and NVIDIA JetPack 6 (Jetson Orin).
@@ -50,6 +55,17 @@ Tested on macOS (Apple Silicon + Intel), Debian Trixie, Raspberry Pi OS
 ---
 
 ## Installation
+
+### Via PHP PIE (recommended)
+
+Install [php-sdl/sdl3](https://github.com/php-sdl/sdl3) first (required), then install this extension:
+
+```bash
+pie install php-sdl/sdl3
+pie install php-sdl/sdl3-ttf
+```
+
+PIE handles the full build pipeline (phpize → configure → make → install) automatically. Make sure SDL3 ≥ 3.4.0 and SDL3_ttf ≥ 3.2 are already installed on the system before running — use the platform scripts below if they are not.
 
 ### Platform installers
 
