@@ -48,6 +48,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           echo "PKG_CONFIG_PATH=${{ steps.sdl.outputs.prefix }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib:${{ steps.sdl.outputs.prefix }}/lib64:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       # ── SDL3_ttf ──────────────────────────────────────────────────────────────
       - name: Install SDL3_ttf (macOS)
@@ -66,9 +67,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
-          sudo apt-get install -y --no-install-recommends build-essential cmake git
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake git fonts-dejavu-core
 
-          git clone --depth 1 --branch main \
+          # Pin to stable SDL3_ttf release branch to avoid CI breakage from `main`.
+          git clone --depth 1 --branch release-3.2.x \
             https://github.com/libsdl-org/SDL_ttf.git /tmp/SDL_ttf
 
           cmake -S /tmp/SDL_ttf -B /tmp/SDL_ttf/build \
@@ -80,6 +84,9 @@ jobs:
 
           cmake --build /tmp/SDL_ttf/build -j$(nproc)
           sudo cmake --install /tmp/SDL_ttf/build
+
+          echo "PKG_CONFIG_PATH=${SDL_PREFIX}/lib/pkgconfig:${SDL_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${SDL_PREFIX}/lib:${SDL_PREFIX}/lib64:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       # ── Build ─────────────────────────────────────────────────────────────────
       # GCC 14+ (Ubuntu 24.10+) promotes -Wincompatible-pointer-types to a hard
