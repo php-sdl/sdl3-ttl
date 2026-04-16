@@ -1,0 +1,30 @@
+{
+    "name": "php-sdl/sdl3-ttf",
+    "type": "php-ext",
+    "description": "PHP extension for SDL3_ttf — TrueType font rendering built with Zephir",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Project Saturn Studios, LLC",
+            "email": "info@projectsaturnstudios.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.2"
+    },
+    "php-ext": {
+        "extension-name": "sdl3ttf",
+        "priority": 30,
+        "build-path": "ext",
+        "support-zts": true,
+        "support-nts": true,
+        "os-families-exclude": ["windows"],
+        "configure-options": [
+            {
+                "name": "enable-sdl3ttf",
+                "description": "Enable the sdl3ttf extension",
+                "needs-value": false
+            }
+        ]
+    }
+}

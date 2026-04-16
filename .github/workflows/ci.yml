@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  build:
+    name: PHP ${{ matrix.php }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        php: ["8.2", "8.3", "8.4"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: none
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── SDL3 dependency ──────────────────────────────────────────────────────
+      - name: Install SDL3 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl3
+
+      - name: Install SDL3 (Linux)
+        if: runner.os == 'Linux'
+        id: sdl
+        uses: libsdl-org/setup-sdl@main
+        with:
+          version: 3-latest
+          build-type: Release
+          install-linux-dependencies: true
+          add-to-environment: true
+
+      - name: Expose SDL3 to pkg-config (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo "PKG_CONFIG_PATH=${{ steps.sdl.outputs.prefix }}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+
+      # ── SDL3_ttf dependency ──────────────────────────────────────────────────
+      - name: Install SDL3_ttf (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl3_ttf
+
+      - name: Install SDL3_ttf (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake git
+
+          git clone --depth 1 --branch main \
+            https://github.com/libsdl-org/SDL_ttf.git /tmp/SDL_ttf
+
+          cmake -S /tmp/SDL_ttf -B /tmp/SDL_ttf/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDLTTF_VENDORED=ON \
+            -DSDLTTF_SAMPLES=OFF \
+            -DCMAKE_PREFIX_PATH="${SDL_PREFIX}" \
+            -DCMAKE_INSTALL_PREFIX="${SDL_PREFIX}"
+
+          cmake --build /tmp/SDL_ttf/build -j$(nproc)
+          sudo cmake --install /tmp/SDL_ttf/build
+
+      # ── GCC 14 compatibility ─────────────────────────────────────────────────
+      # Zephir-generated C code has benign -Wincompatible-pointer-types patterns
+      # that gcc 14+ (Ubuntu 24.10+) promotes to hard errors. Demote them.
+      - name: Set permissive CFLAGS for Zephir-generated code
+        run: |
+          echo "CFLAGS=-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration -Wno-error=implicit-int" >> "$GITHUB_ENV"
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      - name: Build extension
+        working-directory: ext
+        run: |
+          phpize
+          ./configure --enable-sdl3ttf
+          make -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+
+      # ── Smoke test ───────────────────────────────────────────────────────────
+      - name: Smoke-test
+        run: |
+          php \
+            -d extension=ext/modules/sdl3ttf.so \
+            examples/proof_of_work.php

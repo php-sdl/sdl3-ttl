@@ -1,0 +1,30 @@
+{
+    "namespace": "sdl3ttf",
+    "name": "sdl3ttf",
+    "description": "PHP extension for SDL3_ttf — TrueType font rendering via SDL3",
+    "author": "Project Saturn Studios, LLC",
+    "version": "0.2.0",
+    "extra-cflags": "-I/opt/homebrew/include -I/usr/local/include",
+    "extra-libs": "-L/opt/homebrew/lib -L/usr/local/lib -lSDL3 -lSDL3_ttf",
+    "stubs": {
+        "path": "ide/%version%/%namespace%/",
+        "stubs-run-after-generate": false
+    },
+    "warnings": {
+        "unused-variable": true,
+        "unused-variable-external": true,
+        "possible-wrong-parameter": true,
+        "possible-wrong-parameter-undefined": true,
+        "nonexistent-function": true,
+        "nonexistent-class": true
+    },
+    "optimizations": {
+        "call-gatherer-pass": true,
+        "check-invalid-reads": true,
+        "constant-folding": true,
+        "local-context-pass": true,
+        "static-constant-class-folding": true,
+        "static-type-inference": true,
+        "static-type-inference-second-pass": true
+    }
+}
