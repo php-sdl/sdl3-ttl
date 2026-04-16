@@ -66,27 +66,61 @@ jobs:
       - name: Install SDL3_ttf (Linux)
         if: runner.os == 'Linux'
         run: |
+          set -euxo pipefail
           SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake git fonts-dejavu-core
 
-          # Pin to stable SDL3_ttf release branch to avoid CI breakage from `main`.
-          git clone --depth 1 --branch release-3.2.x \
-            https://github.com/libsdl-org/SDL_ttf.git /tmp/SDL_ttf
+          # Prefer distro package when available (fastest / most stable on Ubuntu).
+          if apt-cache show libsdl3-ttf-dev >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends libsdl3-ttf-dev
+          else
+            rm -rf /tmp/SDL_ttf
 
-          cmake -S /tmp/SDL_ttf -B /tmp/SDL_ttf/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSDLTTF_VENDORED=ON \
-            -DSDLTTF_SAMPLES=OFF \
-            -DCMAKE_PREFIX_PATH="${SDL_PREFIX}" \
-            -DCMAKE_INSTALL_PREFIX="${SDL_PREFIX}"
+            # Fallback 1: stable SDL3_ttf release branch.
+            if ! git clone --depth 1 --branch release-3.2.x \
+              https://github.com/libsdl-org/SDL_ttf.git /tmp/SDL_ttf; then
+              rm -rf /tmp/SDL_ttf
+              # Fallback 2: release tarball by tag (avoids git/branch edge-cases).
+              curl -fsSL \
+                https://github.com/libsdl-org/SDL_ttf/archive/refs/tags/release-3.2.2.tar.gz \
+                | tar -xz -C /tmp
+              mv /tmp/SDL_ttf-release-3.2.2 /tmp/SDL_ttf
+            fi
 
-          cmake --build /tmp/SDL_ttf/build -j$(nproc)
-          sudo cmake --install /tmp/SDL_ttf/build
+            cmake -S /tmp/SDL_ttf -B /tmp/SDL_ttf/build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DSDLTTF_VENDORED=ON \
+              -DSDLTTF_SAMPLES=OFF \
+              -DCMAKE_PREFIX_PATH="${SDL_PREFIX}" \
+              -DCMAKE_INSTALL_PREFIX="${SDL_PREFIX}"
+
+            cmake --build /tmp/SDL_ttf/build -j$(nproc)
+            sudo cmake --install /tmp/SDL_ttf/build
+          fi
 
           echo "PKG_CONFIG_PATH=${SDL_PREFIX}/lib/pkgconfig:${SDL_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=${SDL_PREFIX}/lib:${SDL_PREFIX}/lib64:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+      - name: Verify SDL pkg-config wiring (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euxo pipefail
+          SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
+          export PKG_CONFIG_PATH="${SDL_PREFIX}/lib/pkgconfig:${SDL_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
+
+          pkg-config --modversion sdl3
+          for pc in SDL3_ttf sdl3-ttf sdl3_ttf; do
+            if pkg-config --exists "$pc"; then
+              pkg-config --modversion "$pc"
+              pkg-config --cflags "$pc"
+              pkg-config --libs "$pc"
+              exit 0
+            fi
+          done
+
+          echo "No SDL3_ttf pkg-config entry found; build will fall back to manual flags."
 
       # ── Build ─────────────────────────────────────────────────────────────────
       # GCC 14+ (Ubuntu 24.10+) promotes -Wincompatible-pointer-types to a hard
@@ -103,6 +137,21 @@ jobs:
             -Wno-error=implicit-function-declaration
             -Wno-error=implicit-int
         run: |
+          set -euxo pipefail
+
+          # Remove machine-specific generated artifacts accidentally committed
+          # from prior local builds (e.g. macOS Homebrew paths in *.dep files).
+          rm -rf autom4te.cache .libs modules
+          rm -f Makefile Makefile.fragments config.h config.h.in config.log config.nice config.status libtool
+          for dep in $(rg --files -g "*.dep" .); do rm -f "$dep"; done
+
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
+            export CFLAGS="${CFLAGS:-} -I${SDL_PREFIX}/include -I${SDL_PREFIX}/include/SDL3 -I${SDL_PREFIX}/include/SDL3_ttf"
+            export CPPFLAGS="${CPPFLAGS:-} -I${SDL_PREFIX}/include -I${SDL_PREFIX}/include/SDL3 -I${SDL_PREFIX}/include/SDL3_ttf"
+            export LDFLAGS="${LDFLAGS:-} -L${SDL_PREFIX}/lib -L${SDL_PREFIX}/lib64 -Wl,-rpath,${SDL_PREFIX}/lib -Wl,-rpath,${SDL_PREFIX}/lib64"
+          fi
+
           phpize
           ./configure --enable-sdl3ttf
           make -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
