@@ -68,35 +68,37 @@ jobs:
         run: |
           set -euxo pipefail
           SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
+
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake git fonts-dejavu-core
 
-          # Prefer distro package when available (fastest / most stable on Ubuntu).
+          # Prefer distro package if Ubuntu ever ships SDL3_ttf dev headers.
           if apt-cache show libsdl3-ttf-dev >/dev/null 2>&1; then
-            sudo apt-get install -y --no-install-recommends libsdl3-ttf-dev
+            sudo apt-get install -y --no-install-recommends libsdl3-ttf-dev fonts-dejavu-core
           else
-            rm -rf /tmp/SDL_ttf
+            # Build SDL3_ttf from source against SYSTEM harfbuzz/freetype/zlib
+            # so we don't need to fetch the vendored submodules (which a
+            # `--depth 1` clone skips, causing the previous CI failure).
+            sudo apt-get install -y --no-install-recommends \
+              build-essential cmake git ca-certificates curl \
+              pkg-config \
+              libfreetype-dev libharfbuzz-dev zlib1g-dev \
+              fonts-dejavu-core
 
-            # Fallback 1: stable SDL3_ttf release branch.
-            if ! git clone --depth 1 --branch release-3.2.x \
-              https://github.com/libsdl-org/SDL_ttf.git /tmp/SDL_ttf; then
-              rm -rf /tmp/SDL_ttf
-              # Fallback 2: release tarball by tag (avoids git/branch edge-cases).
-              curl -fsSL \
-                https://github.com/libsdl-org/SDL_ttf/archive/refs/tags/release-3.2.2.tar.gz \
-                | tar -xz -C /tmp
-              mv /tmp/SDL_ttf-release-3.2.2 /tmp/SDL_ttf
-            fi
+            rm -rf /tmp/SDL_ttf
+            # Shallow clone is fine here — VENDORED=OFF means no submodules are needed.
+            git clone --depth 1 --branch release-3.2.x \
+              https://github.com/libsdl-org/SDL_ttf.git /tmp/SDL_ttf
 
             cmake -S /tmp/SDL_ttf -B /tmp/SDL_ttf/build \
               -DCMAKE_BUILD_TYPE=Release \
-              -DSDLTTF_VENDORED=ON \
+              -DSDLTTF_VENDORED=OFF \
               -DSDLTTF_SAMPLES=OFF \
+              -DSDLTTF_HARFBUZZ=ON \
+              -DSDLTTF_FREETYPE=ON \
               -DCMAKE_PREFIX_PATH="${SDL_PREFIX}" \
               -DCMAKE_INSTALL_PREFIX="${SDL_PREFIX}"
 
-            cmake --build /tmp/SDL_ttf/build -j$(nproc)
+            cmake --build /tmp/SDL_ttf/build -j"$(nproc)"
             sudo cmake --install /tmp/SDL_ttf/build
           fi
 
@@ -143,7 +145,7 @@ jobs:
           # from prior local builds (e.g. macOS Homebrew paths in *.dep files).
           rm -rf autom4te.cache .libs modules
           rm -f Makefile Makefile.fragments config.h config.h.in config.log config.nice config.status libtool
-          for dep in $(rg --files -g "*.dep" .); do rm -f "$dep"; done
+          find . -name "*.dep" -type f -delete
 
           if [ "${RUNNER_OS}" = "Linux" ]; then
             SDL_PREFIX="${{ steps.sdl.outputs.prefix }}"
